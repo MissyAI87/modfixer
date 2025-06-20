@@ -1,89 +1,66 @@
-# ModFixer for Sims 4
+# 🧹 FixMods – Secure Sims 4 Mod Folder Cleaner
 
-**ModFixer** is a Python tool that automatically cleans, backs up, and organizes your Sims 4 Mods folder.
-
----
-
-## 💡 Features
-
-- 🔄 Creates a full backup before making changes
-- 🧹 Removes duplicate and broken mod files
-- 🗂️ (Optional) Organizes mods by type into subfolders
-- 🚮 Deletes `.DS_Store`, `thumbs.db`, and other garbage files
-- 💬 CLI + GUI versions available
-- ✅ Safe mode prevents unwanted deletions
+A Python script that safely backs up, cleans, and secures your Sims 4 Mods folder.  
+No installer needed. No sketchy mod manager. Just clean, simple automation.
 
 ---
 
-## 🖥️ How to Run
+## ✨ Features
+- 🔒 **Secure by default** – disables risky behavior
+- 📁 **Creates a full backup** before changes
+- 🧼 **Cleans up duplicates, bad file types, and broken mods**
+- ⚠️ **Detects dangerous scripts like .bat files**
+- 📄 **Exports a mod inventory** to CSV and JSON
+- 🧩 **Version checks against mod list online**
+- 🗃️ **Moves junk to quarantine folder**
+- 🧹 **Cleans LastException + Cache files**
 
-Make sure your virtual environment is activated:
+---
 
+## 🖥️ How to Use
+
+### 1. Place script here:
 ```bash
-source ~/sims4env/bin/activate
+~/Documents/mod manager/modfix.py
+```
+
+### 2. Run with alias:
+```bash
 fixmods
 ```
 
-If that doesn't work, try running the script directly:
+This automatically:
+- Activates your virtual environment
+- Runs the script with all security features on
+
+### 💡 Sample alias (in `.zshrc` or `.bash_profile`):
 
 ```bash
-python ~/Documents/sims4_mod_fixer.py
-```
-
-Make sure your alias is properly set up in your shell profile (e.g., `.bashrc`, `.zshrc`, or `.bash_profile`).
-
----
-
-## 📁 Folder Setup
-
-- **Mods folder path:**  
-  `~/Documents/Electronic Arts/The Sims 4/Mods`
-
-- **Backups saved to:**  
-  `~/Documents/Sims4Backups/ModFixer/YYYY-MM-DD/`
-
-- **Quarantined files moved to:**  
-  `~/Documents/Sims4Quarantine/`
-
-These locations can be changed in the script if needed.
-
----
-
-## 🔧 Requirements
-
-- Python 3.10+
-- No external packages needed (uses built-in modules like `os`, `shutil`, `datetime`, and `argparse`)
-- (Optional) Virtual environment: `~/sims4env`
-
-To set up your environment (if not already done):
-
-```bash
-python3 -m venv ~/sims4env
-source ~/sims4env/bin/activate
+alias fixmods="source ~/sims4env/bin/activate && python ~/Documents/mod\ manager/modfix.py"
 ```
 
 ---
 
-## 📋 Future Plans
-
-- Add mod version checker using a central JSON file
-- Auto-reorganize mods by category or file type
-- Export mod list to CSV
-- Add GUI mode using Gradio or PySimpleGUI
-- Trash bin system for deleted mods
-- Read and process MCCC crash logs
-- Add dry-run mode for safe previews
+## 📂 Output
+- Backup: `~/Desktop/ModsBackup-YYYYMMDD.zip`
+- Quarantine: `~/Documents/mod manager/quarantine/`
+- Mod Inventory: `~/Documents/mod manager/mod info/ModsInventory.csv`
 
 ---
 
-## 🙋 Author Notes
+## ⚠️ Security Notice
 
-This project was built as part of a hands-on learning journey into Python scripting, modular design, and local AI integration. It’s part of a larger goal to build self-maintaining, AI-assisted tools for gamers and developers.
+> ⚠️ This script is **not hardened for untrusted mod downloads**.  
+> Do **not** run random files or sketchy .zip content.  
+> Future versions will include sandboxing and checksum verification.
 
 ---
 
-## 📝 License
+## 💬 Support & Updates
 
-This project is licensed under the MIT License.  
-You are free to use, modify, and distribute this software.  
-There is no warranty or liability for issues that may arise from use.
+📦 GitHub: [github.com/MissyAI87/modfixer](https://github.com/MissyAI87/modfixer)  
+☕ Patreon: [Support & Download on Patreon](https://www.patreon.com/posts/fixmods-script-4-131923374?utm_medium=clipboard_copy&utm_source=copyLink&utm_campaign=postshare_creator&utm_content=join_link)
+
+---
+
+© MissyAI 2025 — Open-source, secure, and community-friendly
