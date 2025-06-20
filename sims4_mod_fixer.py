@@ -1,27 +1,101 @@
+"""
+───────────────────────────────────────────────────────────────
+🧩 Sims 4 ModFixer – Clean & Organize Your Mods (Beginner Guide)
+───────────────────────────────────────────────────────────────
+This tool helps you clean up and organize your Sims 4 Mods folder.
+
+✅ What It Does:
+• Removes broken, duplicate, and junk files
+• Creates a full inventory of your mods (Excel file)
+• Checks for outdated mods and updates if available
+• Cleans Sims 4 leftover system error/cache files
+
+📁 Where to Put the Script:
+• Save this file as 'modfix.py'
+• Place it in: ~/Documents/mod manager/
+  (Create the folder if it doesn't exist)
+
+▶️ How to Run It:
+1. Make sure Python is installed and your virtual environment (sims4env) is set up
+2. Open Terminal on your Mac
+3. Run the following command:
+   fixmods --apply
+
+📦 Output:
+• Mod inventory saved to: ~/Documents/mod manager/mod info/
+• You can add extra info to ModNotes.csv to customize descriptions
+
+🧼 What It Cleans:
+• The Sims 4 system files like Cache, LastException, lastUIException, etc.
+
+📝 Notes:
+• This script assumes your Sims 4 Mods folder is located at:
+  ~/Documents/Electronic Arts/The Sims 4/Mods
+• If it’s not, edit the path in the script manually
+"""
+
+"""
+─────────────────────────────────────────────────────
+🧩 Sims 4 ModFixer Script
+─────────────────────────────────────────────────────
+This script helps clean and organize your Sims 4 Mods folder.
+
+✅ What it does:
+• Backs up mods
+• Removes duplicates, junk, and old files
+• Rewrites Resource.cfg
+• Cleans Sims 4 system cache (LastException, etc.)
+• Creates an inventory of your mods
+• Optionally checks for outdated mods
+
+📁 Where to put it:
+• Place this script in: ~/Documents/mod manager/
+• Your Sims 4 Mods folder should be: ~/Documents/Electronic Arts/The Sims 4/Mods
+
+▶️ How to run it:
+• Make sure you’ve activated your Python virtual environment
+  Example: source ~/sims4env/bin/activate
+• Then run: fixmods --apply
+
+📝 Notes:
+• Mod inventory is saved to ~/Documents/mod manager/mod info/
+• You can enrich descriptions by editing ModNotes.csv
+"""
 #!/usr/bin/env python3
 """
-sims4_mod_fixer.py – Version 2 (2025-06-11)
-Created and maintained by Mary (MissyAI)
+┌───────────────────────────────────────────────┐
+│              Sims 4 Mod Fixer v2              │
+├───────────────────────────────────────────────┤
+│ Author: Mary (MissyAI)                        │
+│ Last Updated: 2025-06-20                      │
+│ GitHub: https://github.com/MissyAI87          │
+├───────────────────────────────────────────────┤
+│ Description:                                  │
+│ • Cleans, backs up, and organizes Sims 4 mods │
+│ • Detects duplicates and broken files         │
+│ • Extracts archives and quarantines junk      │
+│ • Rewrites Resource.cfg                       │
+│ • Exports mod inventory (JSON + CSV)          │
+│ • Optionally checks mod versions              │
+└───────────────────────────────────────────────┘
 
-Overview:
-• Cleans and organizes Sims 4 Mods folder
-• Extracts archives, detects duplicates and broken files
-• Quarantines suspicious or redundant content
-• Exports mod inventory in JSON and CSV
-• Rewrites Resource.cfg
-• Optionally checks for outdated mods and downloads updates
+── New Features ───────────────────────────────
+• Merges ModNotes.csv to enrich mod inventory with descriptions and sources
+• Skips folder entries when cleaning Sims 4 keyword-matched files
 
-Usage:
-• Preview only:       python sims4_mod_fixer.py
-• Apply changes:      python sims4_mod_fixer.py --apply
-• Auto mode:          python sims4_mod_fixer.py --apply --auto
-• GUI mode:           python sims4_mod_fixer.py --gui
+── Usage ───────────────────────────────────────
+  • Preview only:       python modfix.py
+  • Apply changes:      python modfix.py --apply
+  • Auto mode:          python modfix.py --apply --auto
+  • GUI mode:           python modfix.py --gui
 """
 
 import argparse, hashlib, shutil, sys, textwrap, zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
+
+import csv  # Used for merging ModNotes.csv into the inventory export
 
 from colorama import Fore, Style
 from tqdm import tqdm
@@ -30,7 +104,9 @@ import tkinter as tk
 from tkinter import messagebox
 import subprocess
 
-# ───────────────── CONFIG ─────────────────
+# ──────────────────────────────
+# 📁 CONFIGURATION & GLOBALS
+# ──────────────────────────────
 MODS_DIR       = Path.home() / "Documents/Electronic Arts/The Sims 4/Mods"
 DESKTOP        = Path.home() / "Desktop"
 BACKUP_NAME    = f"ModsBackup-{datetime.now():%Y%m%d}.zip"
@@ -53,7 +129,10 @@ CATEGORY_MAP: Dict[str, List[str]] = {
 ARCHIVE_EXT = {".zip", ".rar", ".7z"}
 PACKAGE_EXT = {".package", ".ts4script"}
 
-# ──────────────── helpers ────────────────
+#
+# ──────────────────────────────
+# 🎨 COLOR & HASH HELPERS
+# ──────────────────────────────
 def c(msg, col):  # colorful print helper
     return f"{col}{msg}{Style.RESET_ALL}"
 
@@ -71,7 +150,7 @@ def md5(file: Path, chunk=8192) -> str:
     return h.hexdigest()
 
 # ──────────────────────────────
-# 📦 BACKUP FUNCTIONS
+# 🗃 BACKUP & ARCHIVE HANDLING
 # ──────────────────────────────
 def zip_backup(src: Path, dst: Path) -> None:
     # Backup all files under src into a zip archive at dst
@@ -81,7 +160,7 @@ def zip_backup(src: Path, dst: Path) -> None:
                 zf.write(f, f.relative_to(src))
 
 # ──────────────────────────────
-# 📂 ARCHIVE EXTRACTION
+# 🗂 MOD SORTING & FOLDER STANDARDIZATION
 # ──────────────────────────────
 def extract_archive(arc: Path, dest: Path) -> bool:
     import zipfile, rarfile, py7zr
@@ -130,7 +209,7 @@ def standardize_folder_names(mods: Path) -> None:
         print(c(f"📁 Standardized {renamed} folder name(s)", Fore.GREEN))
 
 # ──────────────────────────────
-# 📊 INVENTORY EXPORT
+# 📊 INVENTORY EXPORT FUNCTIONS
 # ──────────────────────────────
 def export_mod_inventory_to_json(mods: Path, output_path: Path) -> None:
     inventory = []
@@ -149,27 +228,44 @@ def export_mod_inventory_to_json(mods: Path, output_path: Path) -> None:
     print(c(f"🗃️ Exported mod inventory to {output_path}", Fore.GREEN))
 
 def export_mod_inventory_to_csv(mods: Path, output_path: Path) -> None:
+    # 🔄 Merge ModNotes.csv: Pull in external descriptions and URLs for mods
+    notes_path = Path.home() / "Documents/mod manager/mod info/ModNotes.csv"
+    notes = {}
+    if notes_path.exists():
+        import csv
+        with open(notes_path, "r", newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                notes[row["name"]] = {
+                    "description": row.get("description", ""),
+                    "source_url": row.get("source_url", "")
+                }
     import csv
     inventory = []
     for file in mods.rglob("*"):
         if file.suffix.lower() in {".package", ".ts4script"}:
+            note = notes.get(file.name, {})
             entry = {
                 "name": file.name,
                 "path": str(file.relative_to(mods)),
                 "size_kb": round(file.stat().st_size / 1024, 2),
                 "category": category_for(file),
-                "added": datetime.fromtimestamp(file.stat().st_ctime).isoformat()
+                "added": datetime.fromtimestamp(file.stat().st_ctime).isoformat(),
+                "description": note.get("description", ""),
+                "source_url": note.get("source_url", "")
             }
             inventory.append(entry)
 
     with open(output_path, "w", newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["name", "path", "size_kb", "category", "added"])
+        writer = csv.DictWriter(f, fieldnames=[
+            "name", "path", "size_kb", "category", "added", "description", "source_url"
+        ])
         writer.writeheader()
         writer.writerows(inventory)
     print(c(f"📄 Exported mod inventory to {output_path}", Fore.GREEN))
 
 # ──────────────────────────────
-# 🔍 VERSION CHECK / AUTO-UPDATES
+# 🌐 VERSION CHECKING & UPDATES
 # ──────────────────────────────
 def check_mod_versions(mods: Path, version_file: Path) -> None:
     """
@@ -211,7 +307,6 @@ def check_mod_versions(mods: Path, version_file: Path) -> None:
         print(c("✓ All mods are up to date.", Fore.GREEN))
 
 
-# Helper function for downloading a file from a URL to a destination path
 def download_file(url: str, dest: Path) -> bool:
     try:
         import urllib.request
@@ -224,7 +319,7 @@ def download_file(url: str, dest: Path) -> bool:
         return False
 
 # ──────────────────────────────
-# 🧹 GARBAGE CLEANUP
+# 🧹 FILE CLEANUP & MAINTENANCE
 # ──────────────────────────────
 def clean_garbage_files(mods: Path) -> None:
     # Remove common unwanted system files from mods folder
@@ -242,8 +337,30 @@ def clean_garbage_files(mods: Path) -> None:
     if removed:
         print(c(f"🧹 Removed {len(removed)} garbage files", Fore.GREEN))
 
+def clear_keyword_files(mods: Path, keywords: List[str]) -> None:
+    # 🧹 Clean Sims 4 directory of known problematic files (e.g., lastexception, lastuiexception)
+    print(c("🔍 Scanning Sims 4 folder for keyword-matching files...", Fore.MAGENTA))
+    removed = []
+    for file in mods.rglob("*"):
+        if not file.is_file():
+            print(c(f"🛑 Skipped folder (not a file): {file.name}", Fore.CYAN))
+        print(f"  Checking: {file.name}")
+        if file.is_file() and any(kw.lower() in file.name.lower() for kw in keywords):
+            try:
+                file.unlink()
+                removed.append(file)
+                print(c(f"  🗑 Deleted: {file.name}", Fore.RED))
+            except Exception as e:
+                print(c(f" ! Failed to delete {file} → {e}", Fore.YELLOW))
+        elif not file.is_file() and any(kw.lower() in file.name.lower() for kw in keywords):
+            # Directory matches keyword, but we skip deleting directories
+            print(c(f"🛑 Skipped folder (matches keyword, not deleted): {file.name}", Fore.CYAN))
+    if removed:
+        print(c(f"🧹 Removed {len(removed)} keyword files", Fore.GREEN))
+    return removed
+
 # ──────────────────────────────
-# 🛠 RESOURCE.CFG REWRITE
+# 🛠 RESOURCE.CFG GENERATION
 # ──────────────────────────────
 def rewrite_resource_cfg(mods: Path) -> None:
     # Rewrite Resource.cfg with appropriate priority and package paths
@@ -270,8 +387,9 @@ def extract_archives(archives: list[Path], qdir: Path) -> None:
     if extracted:
        print(c(f"📦 Extracted {len(extracted)} archive(s) to quarantine", Fore.GREEN))
 
+#
 # ──────────────────────────────
-# ⚠️ CONFLICT SCANNER (TGI KEYS)
+# ⚠️ CONFLICT SCANNING (TGI KEYS)
 # ──────────────────────────────
 def read_tgi_keys(pkg_path):
     # Read TGI keys from package file for conflict detection
@@ -316,8 +434,9 @@ def detect_conflicting_tgi(mods: Path, output_path: Path) -> None:
         print(c("✓ No TGI conflicts found.", Fore.GREEN))
 
 
+#
 # ──────────────────────────────
-# 🚫 BROKEN MOD DETECTOR
+# 🚫 BROKEN MOD DETECTION
 # ──────────────────────────────
 def detect_broken_mods(mods: Path, output_path: Path) -> None:
     broken = []
@@ -359,6 +478,7 @@ def main() -> None:
     mods = MODS_DIR.expanduser()
     standardize_folder_names(mods)
     if not mods.exists():
+        print(c("✖ Mods folder does not exist. Please check path.", Fore.RED))
         sys.exit(c(f"Mods folder not found: {mods}", Fore.RED))
 
     backup_zip = DESKTOP / BACKUP_NAME
@@ -471,8 +591,17 @@ def main() -> None:
     if args.apply:
         json_output = DESKTOP / "ModsInventory.json"
         export_mod_inventory_to_json(mods, json_output)
-        csv_output = DESKTOP / "ModsInventory.csv"
+        # Ensure target directory exists before writing CSV
+        (Path.home() / "Documents/mod manager/mod info").mkdir(parents=True, exist_ok=True)
+        csv_output = Path.home() / "Documents/mod manager/mod info/ModsInventory.csv"
         export_mod_inventory_to_csv(mods, csv_output)
+
+        # Clean Sims 4 keyword-matching files
+        # Clear cache/lastexception/lastuiexception/lastcrash/uiexception files in Sims 4 folder
+        cleaned_files = clear_keyword_files(
+            base=Path.home() / "Documents/Electronic Arts/The Sims 4",
+            keywords=["cache", "lastexception", "lastuiexception", "lastcrash", "uiexception"]
+        )
 
         # Optional: Check mod versions if a known file is present
         version_file = Path.home() / "Desktop" / "KnownModVersions.json"
@@ -481,11 +610,21 @@ def main() -> None:
         if version_file.exists():
             check_mod_versions(mods, version_file)
 
+        # Mod Cleanup Report
+        print(c("\n📊 Mod Cleanup Report", Fore.MAGENTA))
+        print(c("───────────────────────", Fore.MAGENTA))
+        mod_count = len([f for f in mods.rglob("*") if f.is_file() and f.suffix in (".package", ".ts4script")])
+        print(c(f"🧩 Total mods found: {mod_count}", Fore.CYAN))
+        print(c(f"🧼 Keyword files removed: {len(cleaned_files)}", Fore.CYAN))
+        print(c(f"📁 Mod inventory exported to: {csv_output}", Fore.CYAN))
+        print(c("✅ Cleanup and export completed.\n", Fore.GREEN))
+
     if not args.auto:
         print(c("\nAll done! " + ("Changes applied." if args.apply else "No files changed."), Fore.GREEN))
 
+#
 # ──────────────────────────────
-# 🐛 SMALL MOD SCANNER
+# 🐛 SMALL FILE CLEANER
 # ──────────────────────────────
 def clean_empty_or_tiny_mods(mods: Path, args) -> None:
     # Move suspiciously small mods to quarantine
@@ -503,6 +642,10 @@ def clean_empty_or_tiny_mods(mods: Path, args) -> None:
         else:
             print(c(f"[dry] would quarantine tiny {mod.name}", Fore.BLUE))
 
+#
+# ──────────────────────────────
+# 🔄 REMOTE VERSION FILE SYNC
+# ──────────────────────────────
 def update_known_versions_file(url: str, dest: Path) -> None:
     try:
         import urllib.request
@@ -513,6 +656,9 @@ def update_known_versions_file(url: str, dest: Path) -> None:
     except Exception as e:
         print(c(f" ! Failed to update KnownModVersions.json: {e}", Fore.YELLOW))
 
+ # ──────────────────────────────
+ # 🧠 Entry Point
+ # ──────────────────────────────
 if __name__ == "__main__":
     main()
 
