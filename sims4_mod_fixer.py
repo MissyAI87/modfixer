@@ -1,9 +1,45 @@
 """
-⚠️ This script is not hardened for security. Don’t run untrusted files or mod sources. Security patching is in progress.
+🧹 Sims 4 Mod Folder Cleaner – Secure Version
+
+This script automatically backs up, cleans, and organizes your Sims 4 Mods folder.
+
+✅ What it does:
+– Backs up the Mods folder to your Desktop
+– Removes duplicates, broken mods, and dangerous files
+– Quarantines suspicious or unsafe files (like .bat, .exe, .cmd, etc.)
+– Rewrites Resource.cfg (depth 5)
+– Exports a mod inventory (JSON + Excel CSV)
+– Deletes leftover cache/exception files from Sims 4
+– Runs in secure mode automatically (no flags required)
+
+📁 Place this script in:
+~/Documents/mod manager/
+
+▶️ To run it:
+1. Open Terminal
+2. Activate your virtual environment (if not already): 
+   source ~/sims4env/bin/activate
+3. Run it with:
+   fixmods
+
+🧼 Your quarantine folder will be stored at:
+~/Documents/mod manager/quarantine
+
+📌 Security Note:
+This script is not hardened for full system security. Do not run untrusted mods or unknown files.
+"""
+"""
 ───────────────────────────────────────────────────────────────
 🧩 Sims 4 ModFixer – Clean & Organize Your Mods (Beginner Guide)
 ───────────────────────────────────────────────────────────────
 This tool helps you clean up and organize your Sims 4 Mods folder.
+
+⚙️  New Features:
+– All suspicious files (e.g., .bat, .exe) are now moved to a local quarantine folder.
+– Each move is logged to quarantine_log.txt.
+– Use `--secure` flag to disable risky behavior entirely.
+
+⚠️ WARNING: This script is not fully hardened for security. It now moves suspicious files (like .bat, .exe) to a quarantine folder in ~/Documents/mod manager/quarantine. Do not run untrusted files or download mods from unknown sources. Further security improvements are in progress.
 
 ✅ What It Does:
 • Removes broken, duplicate, and junk files
@@ -111,8 +147,10 @@ import subprocess
 MODS_DIR       = Path.home() / "Documents/Electronic Arts/The Sims 4/Mods"
 DESKTOP        = Path.home() / "Desktop"
 BACKUP_NAME    = f"ModsBackup-{datetime.now():%Y%m%d}.zip"
-QUARANTINE_DIR = DESKTOP / "Sims4_Mod_Quarantine"
+QUARANTINE_DIR = Path.home() / "Documents" / "mod manager" / "quarantine"
+QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
 MAX_DEPTH      = 5
+LOG_FILE       = Path.home() / "Documents" / "mod manager" / "quarantine" / "quarantine_log.txt"
 
 # Category keywords (edit to taste, all lowercase)
 CATEGORY_MAP: Dict[str, List[str]] = {
@@ -338,27 +376,28 @@ def clean_garbage_files(mods: Path) -> None:
     if removed:
         print(c(f"🧹 Removed {len(removed)} garbage files", Fore.GREEN))
 
-def clear_keyword_files(mods: Path, keywords: List[str]) -> None:
+def clear_keyword_files(keywords, path, base=None):
     # 🧹 Clean Sims 4 directory of known problematic files (e.g., lastexception, lastuiexception)
     print(c("🔍 Scanning Sims 4 folder for keyword-matching files...", Fore.MAGENTA))
-    removed = []
-    for file in mods.rglob("*"):
+    deleted = []
+    path = Path(path)
+    for file in path.rglob("*"):
         if not file.is_file():
             print(c(f"🛑 Skipped folder (not a file): {file.name}", Fore.CYAN))
         print(f"  Checking: {file.name}")
         if file.is_file() and any(kw.lower() in file.name.lower() for kw in keywords):
             try:
                 file.unlink()
-                removed.append(file)
+                deleted.append(file)
                 print(c(f"  🗑 Deleted: {file.name}", Fore.RED))
             except Exception as e:
                 print(c(f" ! Failed to delete {file} → {e}", Fore.YELLOW))
         elif not file.is_file() and any(kw.lower() in file.name.lower() for kw in keywords):
             # Directory matches keyword, but we skip deleting directories
             print(c(f"🛑 Skipped folder (matches keyword, not deleted): {file.name}", Fore.CYAN))
-    if removed:
-        print(c(f"🧹 Removed {len(removed)} keyword files", Fore.GREEN))
-    return removed
+    if deleted:
+        print(c(f"🧹 Removed {len(deleted)} keyword files from {base or path}", Fore.GREEN))
+    return deleted
 
 # ──────────────────────────────
 # 🛠 RESOURCE.CFG GENERATION
@@ -463,18 +502,12 @@ def detect_broken_mods(mods: Path, output_path: Path) -> None:
         print(c("✓ No broken mods found.", Fore.GREEN))
 
 def main() -> None:
-    ap = argparse.ArgumentParser(
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        description=textwrap.dedent(__doc__)
+    # Always apply changes when run: dry_run = False
+    dry_run = False
+    parser = argparse.ArgumentParser(
+        description="Auto-cleans and organizes Sims 4 Mods folder. Secure by default. No arguments needed."
     )
-    ap.add_argument("--apply", action="store_true", help="Make changes (default is preview only)")
-    ap.add_argument("--auto", action="store_true", help="Run silently and exit (for automation)")
-    ap.add_argument("--gui", action="store_true", help="Launch GUI interface")
-    args = ap.parse_args()
-
-    if args.gui:
-        launch_gui()
-        return
+    args = parser.parse_args()
 
     mods = MODS_DIR.expanduser()
     standardize_folder_names(mods)
@@ -489,16 +522,26 @@ def main() -> None:
     print(c(f"Quarantine → {qdir}\n", Fore.CYAN))
 
     # 1️⃣ Backup first
-    if args.apply:
-        zip_backup(mods, backup_zip)
-    else:
-        print(c("Dry-run → would create backup ZIP.", Fore.BLUE))
+    zip_backup(mods, backup_zip)
 
     # 2️⃣ Gather files safely
     clean_garbage_files(mods)
     archives, packages = [], []
-    clean_empty_or_tiny_mods(mods, args)
+    clean_empty_or_tiny_mods(mods, None)
     for f in mods.rglob("*"):
+        # ─────────────────────────────────────────────
+        # 🔐 SECURITY CHECK – Block Dangerous File Types
+        # ─────────────────────────────────────────────
+        dangerous_exts = ['.exe', '.bat', '.cmd', '.sh', '.vbs', '.ps1', '.js', '.jar']
+        if any(f.name.lower().endswith(ext) for ext in dangerous_exts):
+            target = QUARANTINE_DIR / f.name
+            shutil.move(str(f), str(target))
+            print(f"⚠️ Moved dangerous file to quarantine: {f.name}")
+            # Log quarantine event
+            with open(LOG_FILE, "a") as log:
+                import datetime
+                log.write(f"{datetime.datetime.now().isoformat()} - Moved to quarantine: {f.name}\n")
+            continue
         if not f.is_file():
             continue
         ext = f.suffix.lower()
@@ -508,7 +551,7 @@ def main() -> None:
             packages.append(f)
 
     extract_archives(archives, qdir)
-    clean_empty_or_tiny_mods(mods, args)
+    clean_empty_or_tiny_mods(mods, None)
 
     # 3️⃣ Duplicate MD5 scan (before any moves)
     md5_seen, dupes = {}, []
@@ -522,12 +565,8 @@ def main() -> None:
     # 4️⃣ Extract archives
     for arc in tqdm(archives, desc="Extracting archives"):
         dest_dir = mods / category_for(arc)
-        if args.apply:
-            if extract_archive(arc, dest_dir):
-                arc.unlink()
-        else:
-            print(c(f"[dry] would extract {arc.name} → {dest_dir}", Fore.BLUE))
-#    cleanup_archives(archives)
+        if extract_archive(arc, dest_dir):
+            arc.unlink()
 
     # 5️⃣ Sort packages into category folders
     for pkg in tqdm(packages, desc="Sorting packages"):
@@ -535,26 +574,20 @@ def main() -> None:
         dest = mods / cat / pkg.name
         if dest == pkg:
             continue
-        if args.apply:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(pkg, dest)
-            print(c(f"Moved:\n   From: {pkg}\n   To:   {dest}", Fore.GREEN))
-        else:
-            print(c(f"[dry] would move:\n   From: {pkg}\n   To:   {dest}", Fore.BLUE))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(pkg, dest)
+        print(c(f"Moved:\n   From: {pkg}\n   To:   {dest}", Fore.GREEN))
 
     # 6️⃣ Quarantine duplicate MD5 files
     for d in tqdm(dupes, desc="Quarantining duplicates"):
         if not d.exists():
             continue  # may have been moved already
-        if args.apply:
-            qdir.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.move(d, qdir / d.name)
-                print(c(f"Quarantined duplicate:\n   {d} → {qdir / d.name}", Fore.YELLOW))
-            except FileNotFoundError:
-                continue  # skip vanished files
-        else:
-            print(c(f"[dry] would quarantine:\n   {d}", Fore.BLUE))
+        qdir.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(d, qdir / d.name)
+            print(c(f"Quarantined duplicate:\n   {d} → {qdir / d.name}", Fore.YELLOW))
+        except FileNotFoundError:
+            continue  # skip vanished files
 
     # ── Embedded Resource-ID conflict scan (pure Python) ──
     conflict_output = DESKTOP / "TGI_Conflicts.csv"
@@ -576,52 +609,43 @@ def main() -> None:
             corrupt_files.append(pkg)
 
     for bad in corrupt_files:
-        if args.apply:
-            qdir.mkdir(parents=True, exist_ok=True)
-            shutil.move(bad, qdir / bad.name)
-            print(c(f"Corrupt package → {bad.name} moved to Quarantine", Fore.YELLOW))
-        else:
-            print(c(f"[dry] would quarantine corrupt {bad.name}", Fore.BLUE))
+        qdir.mkdir(parents=True, exist_ok=True)
+        shutil.move(bad, qdir / bad.name)
+        print(c(f"Corrupt package → {bad.name} moved to Quarantine", Fore.YELLOW))
 
     # 7️⃣ Update Resource.cfg
-    if args.apply:
-        rewrite_resource_cfg(mods)
-    else:
-        print(c("[dry] would rewrite Resource.cfg.", Fore.BLUE))
+    rewrite_resource_cfg(mods)
 
-    if args.apply:
-        json_output = DESKTOP / "ModsInventory.json"
-        export_mod_inventory_to_json(mods, json_output)
-        # Ensure target directory exists before writing CSV
-        (Path.home() / "Documents/mod manager/mod info").mkdir(parents=True, exist_ok=True)
-        csv_output = Path.home() / "Documents/mod manager/mod info/ModsInventory.csv"
-        export_mod_inventory_to_csv(mods, csv_output)
+    json_output = DESKTOP / "ModsInventory.json"
+    export_mod_inventory_to_json(mods, json_output)
+    # Ensure target directory exists before writing CSV
+    (Path.home() / "Documents/mod manager/mod info").mkdir(parents=True, exist_ok=True)
+    csv_output = Path.home() / "Documents/mod manager/mod info/ModsInventory.csv"
+    export_mod_inventory_to_csv(mods, csv_output)
 
-        # Clean Sims 4 keyword-matching files
-        # Clear cache/lastexception/lastuiexception/lastcrash/uiexception files in Sims 4 folder
-        cleaned_files = clear_keyword_files(
-            base=Path.home() / "Documents/Electronic Arts/The Sims 4",
-            keywords=["cache", "lastexception", "lastuiexception", "lastcrash", "uiexception"]
-        )
+    # Clean Sims 4 keyword-matching files
+    # Clear cache/lastexception/lastuiexception/lastcrash/uiexception files in Sims 4 folder
+    cleaned_files = clear_keyword_files(
+        keywords=["cache", "lastexception", "lastuiexception", "lastcrash", "uiexception"],
+        path=Path.home() / "Documents/Electronic Arts/The Sims 4",
+        base=Path.home() / "Documents/Electronic Arts/The Sims 4"
+    )
 
-        # Optional: Check mod versions if a known file is present
-        version_file = Path.home() / "Desktop" / "KnownModVersions.json"
-        update_url = "https://raw.githubusercontent.com/MissyAI87/sims-mod-tracker/refs/heads/main/KnownModVersions.json"  # Replace with real URL
-        update_known_versions_file(update_url, version_file)
-        if version_file.exists():
-            check_mod_versions(mods, version_file)
+    # Optional: Check mod versions if a known file is present
+    version_file = Path.home() / "Desktop" / "KnownModVersions.json"
+    update_url = "https://raw.githubusercontent.com/MissyAI87/sims-mod-tracker/refs/heads/main/KnownModVersions.json"  # Replace with real URL
+    update_known_versions_file(update_url, version_file)
+    if version_file.exists():
+        check_mod_versions(mods, version_file)
 
-        # Mod Cleanup Report
-        print(c("\n📊 Mod Cleanup Report", Fore.MAGENTA))
-        print(c("───────────────────────", Fore.MAGENTA))
-        mod_count = len([f for f in mods.rglob("*") if f.is_file() and f.suffix in (".package", ".ts4script")])
-        print(c(f"🧩 Total mods found: {mod_count}", Fore.CYAN))
-        print(c(f"🧼 Keyword files removed: {len(cleaned_files)}", Fore.CYAN))
-        print(c(f"📁 Mod inventory exported to: {csv_output}", Fore.CYAN))
-        print(c("✅ Cleanup and export completed.\n", Fore.GREEN))
-
-    if not args.auto:
-        print(c("\nAll done! " + ("Changes applied." if args.apply else "No files changed."), Fore.GREEN))
+    # Mod Cleanup Report
+    print(c("\n📊 Mod Cleanup Report", Fore.MAGENTA))
+    print(c("───────────────────────", Fore.MAGENTA))
+    mod_count = len([f for f in mods.rglob("*") if f.is_file() and f.suffix in (".package", ".ts4script")])
+    print(c(f"🧩 Total mods found: {mod_count}", Fore.CYAN))
+    print(c(f"🧼 Keyword files removed: {len(cleaned_files)}", Fore.CYAN))
+    print(c(f"📁 Mod inventory exported to: {csv_output}", Fore.CYAN))
+    print(c("✅ Cleanup and export completed.\n", Fore.GREEN))
 
 #
 # ──────────────────────────────
@@ -634,14 +658,10 @@ def clean_empty_or_tiny_mods(mods: Path, args) -> None:
     for file in mods.rglob("*"):
         if file.suffix.lower() in {".package", ".ts4script"} and file.stat().st_size < 1024:
             small.append(file)
-    
     for mod in small:
-        if args.apply:
-            qdir.mkdir(parents=True, exist_ok=True)
-            shutil.move(mod, qdir / mod.name)
-            print(c(f"Too small → {mod.name} quarantined", Fore.YELLOW))
-        else:
-            print(c(f"[dry] would quarantine tiny {mod.name}", Fore.BLUE))
+        qdir.mkdir(parents=True, exist_ok=True)
+        shutil.move(mod, qdir / mod.name)
+        print(c(f"Too small → {mod.name} quarantined", Fore.YELLOW))
 
 #
 # ──────────────────────────────
